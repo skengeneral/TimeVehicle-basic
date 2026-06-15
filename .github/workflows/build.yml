@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }}
+    name: Build Bundle
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -33,17 +33,16 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyinstaller PyQt6 pandas openpyxl requests
 
-    - name: Build Windows Executable
-      if: matrix.os == 'windows-latest'
-      run: pyinstaller --onefile --noconsole --name="TimeVehicle 1.0" user-input-data.py
-
-    - name: Build macOS Application Bundle
-      if: matrix.os == 'macos-latest'
-      run: pyinstaller --onefile --windowed --name="TimeVehicle 1.0" user-input-data.py
-
-    - name: Build Linux Executable
-      if: matrix.os == 'ubuntu-latest'
-      run: pyinstaller --onefile --name="TimeVehicle-1.0-linux" user-input-data.py
+    - name: Run PyInstaller Builder Matrix
+      run: |
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          pyinstaller --onefile --noconsole --name="TimeVehicle 1.0" user-input-data.py
+        elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+          pyinstaller --onefile --windowed --name="TimeVehicle 1.0" user-input-data.py
+        elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          pyinstaller --onefile --name="TimeVehicle-1.0-linux" user-input-data.py
+        fi
+      shell: bash
 
     - name: Upload Finished Builds to GitHub Artifacts
       uses: actions/upload-artifact@v4
@@ -53,3 +52,4 @@ jobs:
           dist/TimeVehicle 1.0.exe
           dist/TimeVehicle 1.0.app
           dist/TimeVehicle-1.0-linux
+        if-no-files-found: warn
