@@ -9,18 +9,19 @@ from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QCheckBox, 
     QPushButton, QVBoxLayout, QHBoxLayout, QFrame, QMessageBox, QScrollArea
 )
-from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtCore import Qt, QPoint, QTimer
 from PyQt6.QtGui import QFont, QPainter, QPolygon, QColor, QCursor
 
 def fetch_live_serp_credits():
-    """Connects directly to SerpApi to extract remaining search credits in real-time."""
+    """Connects directly to SerpApi to extract remaining search credits with an optimized timeout."""
     api_key = scraper_engine.get_stored_api_key()
     if not api_key:
         return "Missing Key"
     endpoint = "https://serpapi.com/account.json"
     params = {"api_key": api_key}
     try:
-        response = requests.get(endpoint, params=params, timeout=5)
+        # Tightened timeout to 3 seconds so the background check finishes quickly
+        response = requests.get(endpoint, params=params, timeout=3)
         if response.status_code == 200:
             account_info = response.json()
             return str(account_info.get("plan_searches_left", 0))
@@ -54,13 +55,15 @@ class LogoWidget(QWidget):
 class TimeVehicleUI(QWidget):
     def __init__(self):
         super().__init__()
-        self.live_credits = fetch_live_serp_credits()
+        # 1. Provide a temporary loading placeholder so the application can load offline immediately
+        self.live_credits = "Fetching Status..."
         self.init_ui()
+        
+        # 2. Use a single-shot timer to check credits 100ms AFTER the UI window shows up safely
+        QTimer.singleShot(100, self.lazy_load_credits)
         
     def init_ui(self):
         self.setWindowTitle("Time vehicle - 1.0")
-        
-        # 🔓 FLEXIBLE WINDOW RESIZING: Enables the Maximize button natively
         self.setMinimumSize(440, 600)  
         self.resize(480, 680)          
         self.setStyleSheet("background-color: #FFFFFF;")
@@ -73,7 +76,6 @@ class TimeVehicleUI(QWidget):
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.setSpacing(0)
         
-        # Scroll Area Setup
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
@@ -86,7 +88,6 @@ class TimeVehicleUI(QWidget):
         master_layout.setContentsMargins(0, 0, 0, 0)
         master_layout.setSpacing(0)
         
-        # --- PREMIUM HEADER BANNER SECTION ---
         header_widget = QWidget()
         header_widget.setStyleSheet("background-color: #002D4A; border: none;") 
         header_layout = QHBoxLayout(header_widget)
@@ -109,7 +110,6 @@ class TimeVehicleUI(QWidget):
         sheet_layout.setSpacing(12)
         sheet_layout.setContentsMargins(25, 15, 25, 20)
         
-        # LIVE METRIC BALANCE INDICATION ROW
         credit_frame = QFrame()
         credit_frame.setStyleSheet("background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 4px;")
         credit_layout = QHBoxLayout(credit_frame)
@@ -135,7 +135,6 @@ class TimeVehicleUI(QWidget):
         credit_layout.addWidget(btn_recharge)
         sheet_layout.addWidget(credit_frame)
         
-        # --- INPUT FIELDS SECTION ---
         lbl_prof = QLabel("Field of search/profession:", font=label_font)
         lbl_prof.setStyleSheet("color: #333333;")
         sheet_layout.addWidget(lbl_prof)
@@ -187,7 +186,6 @@ class TimeVehicleUI(QWidget):
         
         self.add_separator(sheet_layout)
         
-        # --- RATING RANGE FILTERS ---
         rating_label = QLabel("Google rating range")
         rating_label.setFont(section_font)
         rating_label.setStyleSheet("color: #002D4A;")
@@ -213,7 +211,6 @@ class TimeVehicleUI(QWidget):
         sheet_layout.addLayout(rating_layout)
         self.add_separator(sheet_layout)
         
-        # --- DOWNLOAD SYSTEM SELECTION ---
         download_label = QLabel("Download to System:")
         download_label.setFont(section_font)
         download_label.setStyleSheet("color: #002D4A;")
@@ -231,7 +228,6 @@ class TimeVehicleUI(QWidget):
         self.add_separator(sheet_layout)
         sheet_layout.addSpacing(5)
         
-        # MAIN SUBMIT BUTTON
         self.btn_submit = QPushButton("SUBMIT")
         self.btn_submit.setFont(QFont("Arial", 12, QFont.Weight.Bold))
         self.btn_submit.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -246,7 +242,6 @@ class TimeVehicleUI(QWidget):
         self.btn_submit.clicked.connect(self.handle_submit_action)
         sheet_layout.addWidget(self.btn_submit)
         
-        # --- SUPPORT BADGE FOOTER ROW ---
         sheet_layout.addSpacing(15)
         support_frame = QFrame()
         support_frame.setStyleSheet("background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 12px;")
@@ -289,7 +284,14 @@ class TimeVehicleUI(QWidget):
         webbrowser.open("https://serpapi.com/plan")
         self.refresh_credit_display()
         
+    def lazy_load_credits(self):
+        """Asynchronously updates the credit layout indicator once the window is rendered."""
+        self.live_credits = fetch_live_serp_credits()
+        self.lbl_credits.setText(f"💳 Searches Remaining: {self.live_credits}")
+
     def refresh_credit_display(self):
+        self.lbl_credits.setText("💳 Searches Remaining: Fetching Status...")
+        QApplication.processEvents()
         self.live_credits = fetch_live_serp_credits()
         self.lbl_credits.setText(f"💳 Searches Remaining: {self.live_credits}")
 
@@ -316,13 +318,11 @@ class TimeVehicleUI(QWidget):
             QMessageBox.warning(self, "Missing Rating", "Please select at least one rating box or select 'ALL'.")
             return
 
-        # 🎯 KEEP SEARCH QUERY RESTRICTED TO KEYWORDS ONLY
         search_components = []
         if profession: search_components.append(profession)
         if locality:   search_components.append(locality)
         clean_search_query = " ".join(search_components)
         
-        # Build a separate location context string out of geographic fields
         geo_components = []
         if city:    geo_components.append(city)
         if state:   geo_components.append(state)
@@ -334,14 +334,12 @@ class TimeVehicleUI(QWidget):
         QApplication.processEvents()
         
         try:
-            # 📡 1. Pull down the dictionary packet from the live-patched scraper engine
             extraction_packet = scraper_engine.extract_local_leads(
                 search_query=clean_search_query, 
                 allowed_ratings=selected_ratings,
                 target_city=target_location_context
             )
             
-            # 📦 2. Unpack the database rows and your explicit columns matrix sent from GitHub Gist
             extracted_data = extraction_packet.get("data", [])
             active_columns_layout = extraction_packet.get("columns_layout", None)
             
@@ -351,7 +349,6 @@ class TimeVehicleUI(QWidget):
                 
             saved_file_paths = []
             if self.chk_excel.isChecked():
-                # 🚀 3. Pass BOTH records and columns over to export engine (Branded as timevehicle)
                 xl_path = export_engine.save_to_excel(extracted_data, active_columns_layout)
                 saved_file_paths.append(f"• Excel File Created: {xl_path}")
                 
@@ -373,8 +370,6 @@ class TimeVehicleUI(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    
-    # 🍏 WINDOWS VS MULTI-OS STYLE OPTIMIZER
     if sys.platform == "win32":
         app.setStyle('Fusion')
         
