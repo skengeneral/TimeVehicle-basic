@@ -198,64 +198,60 @@ def extract_local_leads(search_query, allowed_ratings, target_city=None):
                 if not raw_results: break
                     
                 for biz in raw_results:
-                    title = biz.get("title") or biz.get("name") or "Unknown Firm"
-                    if title.lower().strip() in processed_titles: continue
-                    
-                    # 🚀 DYNAMIC SMART FILTER
-                    search_terms = [t.lower() for t in search_query.split() if len(t) > 2]
-                    exclude_words = ['nagole', 'india', 'city', 'town', 'area']
-                    search_terms = [t for t in search_terms if t not in exclude_words]
+                title = biz.get("title") or biz.get("name") or "Unknown Firm"
+                if title.lower().strip() in processed_titles: continue
+                
+                # 🚀 DYNAMIC SMART FILTER
+                search_terms = [t.lower() for t in search_query.split() if len(t) > 2]
+                exclude_words = ['nagole', 'india', 'city', 'town', 'area']
+                search_terms = [t for t in search_terms if t not in exclude_words]
 
-                    if search_terms and not any(term in title.lower() for term in search_terms):
-                        print(f"Skipping unrelated result: {title}")
-                        continue
+                if search_terms and not any(term in title.lower() for term in search_terms):
+                    continue
+                
+                # 1. Rating Logic
+                try: rating_val = float(biz.get("rating", 0))
+                except: rating_val = 0.0
+                
+                rating_matches = False
+                if "ALL" in allowed_ratings:
+                    rating_matches = True
+                else:
+                    for selected_rate in allowed_ratings:
+                        try:
+                            target_int = int(selected_rate)
+                            if target_int == 5 and rating_val == 5.0:
+                                rating_matches = True; break
+                            elif target_int <= rating_val < (target_int + 1):
+                                rating_matches = True; break
+                        except ValueError: continue
+
+                if rating_matches:
+                    processed_titles.add(title.lower().strip())
+                    website_link = biz.get("website") or "No Website"
+                    full_address = biz.get("address", "") or "Not Provided"
                     
-                    raw_rating = biz.get("rating", 0)
-                    try: 
-                        rating_val = float(raw_rating)
-                    except: 
-                        rating_val = 0.0
+                    # 2. Extract Data
+                    found_metrics = extract_contact_metrics_from_website(website_link)
+                    email_id = found_metrics["Email ID"]
                     
-                    rating_matches = False
-                    # ... (rest of your existing logic continues here at this same indentation level)
-                    if "ALL" in allowed_ratings:
-                        rating_matches = True
-                    else:
-                        for selected_rate in allowed_ratings:
-                            try:
-                                target_int = int(selected_rate)
-                                if target_int == 5 and rating_val == 5.0:
-                                    rating_matches = True
-                                    break
-                                elif target_int <= rating_val < (target_int + 1):
-                                    rating_matches = True
-                                    break
-                            except ValueError: continue
+                    # 3. Email Deep Search Fallback
+                    if email_id == "Not Provided":
+                        email_id = fetch_email_via_google_search(api_key, title, full_address, target_city)
                     
-                    if rating_matches:
-                        processed_titles.add(title.lower().strip())
-                        website_link = biz.get("website") or "No Website"
-                        full_address = biz.get("address", "") or "Not Provided"
-                        
-                        # Python reads down and resolves this reference perfectly now!
-                        found_metrics = extract_contact_metrics_from_website(p, website_link)
-                        email_id = found_metrics["Email ID"]
-                        
-                        if email_id == "Not Provided":
-                            email_id = fetch_email_via_google_search(api_key, title, full_address, target_city)
-                        
-                        gps_hours = biz.get("operating_hours", {})
-                        hours_string = " | ".join([f"{day.capitalize()}: {t}" for day, t in gps_hours.items()]) if (isinstance(gps_hours, dict) and gps_hours) else "Not Provided"
-                        
-                        lead_card = {
-                            "Business Name": title, "Google Rating": rating_val, 
-                            "Complete Address": full_address, "Operating Hours Matrix": hours_string, 
-                            "Website Link": website_link, "Email ID": email_id,
-                            "Phone Number": biz.get("phone") or "Not Provided",
-                            "Facebook Handle": found_metrics["Facebook"], "Instagram Handle": found_metrics["Instagram"],
-                            "LinkedIn Handle": found_metrics["LinkedIn"], "Twitter/X Handle": found_metrics["Twitter/X"]
-                        }
-                        filtered_leads.append(lead_card)
+                    # 4. Hours Matrix
+                    gps_hours = biz.get("operating_hours", {})
+                    hours_string = " | ".join([f"{day.capitalize()}: {t}" for day, t in gps_hours.items()]) if isinstance(gps_hours, dict) else "Not Provided"
+                    
+                    lead_card = {
+                        "Business Name": title, "Google Rating": rating_val, 
+                        "Complete Address": full_address, "Operating Hours Matrix": hours_string, 
+                        "Website Link": website_link, "Email ID": email_id,
+                        "Phone Number": biz.get("phone") or "Not Provided",
+                        "Facebook Handle": found_metrics["Facebook"], "Instagram Handle": found_metrics["Instagram"],
+                        "LinkedIn Handle": found_metrics["LinkedIn"], "Twitter/X Handle": found_metrics["Twitter/X"]
+                    }
+                    filtered_leads.append(lead_card)
                 
                 serp_pagination = data.get("serpapi_pagination", {})
                 if "next" not in serp_pagination: break
