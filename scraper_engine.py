@@ -162,16 +162,30 @@ def extract_contact_metrics_from_website(playwright_instance, website_url, progr
     }
     if not website_url or "No Website" in website_url or not website_url.startswith("http"):
         return socials
-        
+
+    # Keep the original URL so we can fall back to it if https fails
+    original_url = website_url
     if website_url.startswith("http://"):
         website_url = website_url.replace("http://", "https://", 1)
-        
+
     try:
         browser = playwright_instance.chromium.launch(headless=True, channel="chrome")
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         )
         homepage_html = scrape_page_with_browser(context, website_url)
+
+        # ── HTTP fallback ──────────────────────────────────────────
+        # Some older business websites (small brokers, local firms) don't
+        # support HTTPS or have expired/invalid SSL certificates.
+        # If the forced-HTTPS version fails, quietly retry with the
+        # original HTTP URL rather than abandoning the scrape entirely.
+        if not homepage_html and original_url != website_url:
+            log("   ↩️  HTTPS unreachable — retrying on HTTP...")
+            homepage_html = scrape_page_with_browser(context, original_url)
+            if homepage_html:
+                website_url = original_url   # keep http for subpage links too
+
         if not homepage_html:
             browser.close()
             return socials
